@@ -38,7 +38,7 @@ spec:
         - name: nginx
           # Pin an explicit tag. `latest` makes rollouts unreproducible and
           # breaks Argo CD's ability to tell you what is actually running.
-          image: nginx:latest
+          image: nginx:1.27-alpine
 
           # IfNotPresent avoids a registry round-trip when the tag is already
           # cached on the node. Use Always only for mutable tags.
