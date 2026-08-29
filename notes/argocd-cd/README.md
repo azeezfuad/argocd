@@ -8,7 +8,7 @@ kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}
 
 argocd admin initial-password -n argocd
 username: admin
-passwor: 8THFlGOmBmdleQ43
+passwor: S12-11-K8S/argocd-cd S12-11-K8S/command.md
 
 argocd login <ARGOCD_SERVER>
 argocd login 165.227.254.154

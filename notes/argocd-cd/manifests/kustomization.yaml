@@ -1,0 +1,13 @@
+# Apply everything in order with:  kubectl apply -k .
+# The Secrets carry placeholders — fill them in (or replace them with
+# SealedSecrets / ExternalSecrets) before applying.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - 01-project.yaml
+  - 02-repo-ssh-secret.yaml
+  - 03-repo-token-secret.yaml
+  - 04-application.yaml

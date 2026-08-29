@@ -1,0 +1,395 @@
+# =============================================================================
+# Argo CD Application — annotated reference
+# =============================================================================
+# An Application answers one question:
+#
+#     WHICH manifests (repo + revision + path)
+#     go to WHICH place (cluster + namespace),
+#     and HOW are they kept in sync?
+#
+# Apply with:  kubectl apply -f 04-application.yaml
+# Inspect:     kubectl get application my-app -n argocd -o yaml
+#              argocd app get my-app
+#
+# HOW TO READ THIS FILE
+#   Lines that are ACTIVE form a working, minimal-but-complete application.
+#   Lines that are COMMENTED OUT are optional or alternative settings, each
+#   with an explanation. Uncomment what you need — but read the note first,
+#   because several of them are mutually exclusive (source vs sources,
+#   helm vs kustomize vs directory).
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  # The Application's own name. This is what you see in the UI and pass to
+  # `argocd app <cmd> <name>`. It is NOT the name of anything deployed.
+  name: my-app
+
+  # MUST be the namespace Argo CD runs in (argocd), unless your admin has
+  # enabled "apps in any namespace". Putting it in the target namespace is
+  # the single most common beginner mistake — the app simply never appears.
+  namespace: argocd
+
+  finalizers:
+    # Cascading delete: removing this Application also removes every resource
+    # it deployed. Without this finalizer, deleting the Application leaves the
+    # Deployments/Services orphaned and running in the cluster.
+    - resources-finalizer.argocd.argoproj.io
+    # Background variant — same effect, but Kubernetes reaps children
+    # asynchronously so the delete returns faster.
+    # - resources-finalizer.argocd.argoproj.io/background
+
+  labels:
+    # Free-form. Useful for `kubectl get app -n argocd -l env=dev` and for
+    # grouping in the UI.
+    env: development
+    team: platform
+
+  annotations:
+    # Ordering across MULTIPLE Applications (e.g. deploy the database app
+    # before the API app). Lower numbers sync first. Default is 0.
+    argocd.argoproj.io/sync-wave: "0"
+
+    # Only relevant if you also manage this Application itself with GitOps:
+    # tells the parent app to ignore drift on specific fields.
+    # argocd.argoproj.io/compare-options: IgnoreExtraneous
+
+    # Ask Argo CD to re-check Git now (normally set by the CLI/UI, not by you).
+    # argocd.argoproj.io/refresh: normal
+
+    # Notifications, if the notifications controller is installed.
+    # notifications.argoproj.io/subscribe.on-sync-failed.slack: my-channel
+
+spec:
+  # ---------------------------------------------------------------------------
+  # PROJECT — the AppProject from 01-project.yaml.
+  # The project's sourceRepos and destinations are enforced against everything
+  # below. If spec.source.repoURL is not listed in the project's sourceRepos,
+  # or destination is not in its destinations, the app is REJECTED at sync time
+  # with "... is not permitted in project ...".
+  # ---------------------------------------------------------------------------
+  project: development
+
+  # ---------------------------------------------------------------------------
+  # SOURCE — where the manifests come from.
+  # Use EITHER `source:` (one source, shown here) OR `sources:` (a list, see
+  # the multi-source block near the bottom). Never both.
+  # ---------------------------------------------------------------------------
+  source:
+    # The Git repository. This string must match the `url` in your repository
+    # Secret AND an entry in the project's sourceRepos, character for character.
+    #   SSH form   -> authenticated by 02-repo-ssh-secret.yaml
+    #   HTTPS form -> authenticated by 03-repo-token-secret.yaml
+    repoURL: git@github.com:my-org/my-repo.git
+    # repoURL: https://github.com/my-org/my-repo.git
+
+    # What to track. Argo CD re-reads this on every refresh (3 min by default).
+    #   main            -> follows the branch, redeploys on every commit
+    #   v1.4.2          -> pinned tag, only moves when you change this field
+    #   a1b2c3d         -> pinned commit SHA, fully immutable
+    #   HEAD            -> the repo's default branch
+    targetRevision: main
+
+    # Folder INSIDE the repo holding the manifests. Relative to the repo root,
+    # case sensitive. Use "." for the repo root.
+    path: k8s/overlays/dev
+
+    # -- Rendering: Argo CD auto-detects the tool from the files it finds.
+    #    Add at most ONE of the blocks below to override or configure it.
+
+    # --- Kustomize ------------------------------------------------------------
+    # Used automatically when the path contains a kustomization.yaml.
+    # kustomize:
+    #   # Prefix/suffix added to every generated resource name.
+    #   namePrefix: dev-
+    #   nameSuffix: -v2
+    #   # Override image tags without editing the repo — handy for CI promotion.
+    #   images:
+    #     - my-registry/my-app:1.4.2
+    #   # Labels/annotations stamped onto every resource.
+    #   commonLabels:
+    #     env: development
+    #   commonAnnotations:
+    #     owner: platform-team
+    #   # Scale a workload without touching the base manifests.
+    #   replicas:
+    #     - name: my-app
+    #       count: 2
+    #   # Pin the kustomize binary version configured in argocd-cm.
+    #   version: v5.4.1
+    #   # Force `kubectl apply --namespace` onto namespace-less resources.
+    #   forceCommonLabels: false
+
+    # --- Helm -----------------------------------------------------------------
+    # Used automatically when the path contains a Chart.yaml.
+    # helm:
+    #   # values files, relative to the chart directory.
+    #   valueFiles:
+    #     - values.yaml
+    #     - values-dev.yaml
+    #   # Inline values — merged on top of the value files.
+    #   values: |
+    #     replicaCount: 2
+    #     image:
+    #       tag: 1.4.2
+    #   # Equivalent of `helm --set key=value`. Takes precedence over values.
+    #   parameters:
+    #     - name: image.tag
+    #       value: 1.4.2
+    #     - name: ingress.enabled
+    #       value: "true"
+    #       forceString: true      # quote the value so "true" stays a string
+    #   # `helm --set-file key=path`
+    #   fileParameters:
+    #     - name: config
+    #       path: files/config.json
+    #   # Helm release name. Defaults to the Application name.
+    #   releaseName: my-app
+    #   # Do not fail if a listed values file is missing (useful per-env).
+    #   ignoreMissingValueFiles: true
+    #   # Render CRDs that Helm would normally skip.
+    #   skipCrds: false
+    #   # Send the repo credentials to the chart's dependency repos too.
+    #   passCredentials: false
+    #   # Force the Helm template API version.
+    #   version: v3
+
+    # --- Plain YAML directory --------------------------------------------------
+    # Used when the path is just .yaml files with no kustomization/Chart.
+    # directory:
+    #   # Walk subdirectories too. Off by default — only the top level is read.
+    #   recurse: true
+    #   # Glob filters, relative to `path`.
+    #   include: '{*.yaml,*.yml}'
+    #   exclude: '{tests/**,*-test.yaml}'
+    #   # Jsonnet support.
+    #   jsonnet:
+    #     extVars:
+    #       - name: env
+    #         value: development
+    #     tlas:
+    #       - name: replicas
+    #         value: "2"
+
+    # --- Config Management Plugin ----------------------------------------------
+    # For a custom renderer (jsonnet wrapper, cdk8s, ytt, ...) registered in
+    # the repo-server as a sidecar plugin.
+    # plugin:
+    #   name: my-plugin-v1.0
+    #   env:
+    #     - name: ENVIRONMENT
+    #       value: development
+
+  # ---------------------------------------------------------------------------
+  # DESTINATION — where the rendered manifests are applied.
+  # Use EITHER `server` (the cluster API URL) OR `name` (the cluster's
+  # registered name in Argo CD). Setting both is an error.
+  # ---------------------------------------------------------------------------
+  destination:
+    # The cluster Argo CD itself runs in. Remote clusters are registered with
+    # `argocd cluster add <kube-context>` and then referenced by their URL.
+    server: https://kubernetes.default.svc
+    # name: in-cluster          # alternative: reference the cluster by name
+
+    # Default namespace for resources that do not declare one of their own.
+    # A resource with its own metadata.namespace keeps that namespace — this
+    # field does NOT override it (use kustomize or ServerSideApply for that).
+    namespace: development
+
+  # ---------------------------------------------------------------------------
+  # SYNC POLICY — how Git changes reach the cluster.
+  # Omit the whole `automated:` block for MANUAL sync: Argo CD will report
+  # OutOfSync and wait for `argocd app sync` or the SYNC button.
+  # ---------------------------------------------------------------------------
+  syncPolicy:
+    automated:
+      # Delete cluster resources that no longer exist in Git.
+      # false = removed manifests linger in the cluster forever.
+      prune: true
+
+      # Revert manual changes (kubectl edit/scale) back to what Git says.
+      # This is why "my change keeps disappearing" — it is working as intended.
+      selfHeal: true
+
+      # Guard rail: if a rendering bug makes Git produce ZERO resources,
+      # false stops Argo CD from pruning the entire application away.
+      # Keep this false unless you genuinely deploy an empty app.
+      allowEmpty: false
+
+    syncOptions:
+      # Create destination.namespace if it does not exist. Requires Namespace
+      # in the project's clusterResourceWhitelist.
+      - CreateNamespace=true
+
+      # Deletion order for pruned resources:
+      #   foreground = wait for dependents to go first (safest, slowest)
+      #   background = delete the parent, reap children async
+      #   orphan     = leave children running
+      - PrunePropagationPolicy=foreground
+
+      # Do all pruning AFTER everything else has synced and gone Healthy.
+      # Prevents deleting the old version before the new one is up.
+      - PruneLast=true
+
+      # Honour spec.ignoreDifferences during SYNC, not only during the
+      # OutOfSync comparison. Without this, a sync overwrites the fields you
+      # deliberately told Argo CD to ignore.
+      - RespectIgnoreDifferences=true
+
+      # Apply only the resources that actually differ, instead of re-applying
+      # everything. A big speed-up on large applications.
+      - ApplyOutOfSyncOnly=true
+
+      # --- Optional, uncomment as needed ---
+
+      # Server-side apply. Required for very large CRDs that blow the 256 KB
+      # last-applied-configuration annotation limit, and gives cleaner
+      # field-ownership when several controllers touch the same object.
+      # - ServerSideApply=true
+
+      # Skip `kubectl apply --dry-run` validation. Sometimes needed for CRs
+      # whose CRD is installed in the same sync.
+      # - Validate=false
+
+      # Don't dry-run against a resource whose CRD does not exist yet.
+      # - SkipDryRunOnMissingResource=true
+
+      # Use `kubectl replace` instead of `apply`. Last resort for immutable
+      # fields — it deletes and recreates, so it is disruptive.
+      # - Replace=true
+
+      # Fail the sync if another Application already manages the same resource,
+      # instead of silently fighting over it.
+      # - FailOnSharedResource=true
+
+      # Require a human to confirm destructive operations in the UI.
+      # - Prune=confirm
+      # - Delete=confirm
+
+    # Labels/annotations stamped on the namespace when CreateNamespace=true
+    # creates it. Common use: service-mesh injection, pod-security levels.
+    managedNamespaceMetadata:
+      labels:
+        istio-injection: enabled
+        pod-security.kubernetes.io/enforce: baseline
+      annotations:
+        owner: platform-team
+
+    # Automatic retry for a failed sync. Without this a transient failure
+    # (image pull, webhook timeout) leaves the app stuck until you sync again.
+    retry:
+      limit: 5                   # attempts after the first failure; -1 = forever
+      backoff:
+        duration: 5s             # wait before retry #1
+        factor: 2                # multiply the wait each time: 5s,10s,20s,40s...
+        maxDuration: 3m          # cap on the wait
+
+  # ---------------------------------------------------------------------------
+  # IGNORE DIFFERENCES — fields Argo CD must NOT treat as drift.
+  # Use these when another controller legitimately owns a field. Without them
+  # the app oscillates between Synced and OutOfSync forever.
+  # Pair with the RespectIgnoreDifferences sync option above.
+  # ---------------------------------------------------------------------------
+  ignoreDifferences:
+    # The HPA owns replica count — do not fight it.
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+
+    # cert-manager / the API server injects the CA bundle into webhooks.
+    # - group: admissionregistration.k8s.io
+    #   kind: ValidatingWebhookConfiguration
+    #   jsonPointers:
+    #     - /webhooks/0/clientConfig/caBundle
+
+    # JSONPath instead of JSON pointer — can match by wildcard.
+    # - group: ''
+    #   kind: Service
+    #   name: my-app
+    #   namespace: development
+    #   jsonPathExpressions:
+    #     - .spec.clusterIP
+    #     - .spec.ports[*].nodePort
+
+    # Ignore every field owned by a named field manager (server-side apply).
+    # - group: '*'
+    #   kind: '*'
+    #   managedFieldsManagers:
+    #     - kube-controller-manager
+
+  # ---------------------------------------------------------------------------
+  # HOUSEKEEPING
+  # ---------------------------------------------------------------------------
+  # How many past syncs stay available for `argocd app rollback`. Default 10.
+  # Set to 0 to disable rollback history entirely.
+  revisionHistoryLimit: 10
+
+  # Free-form key/value pairs shown on the application page in the UI.
+  # Good place for runbook and dashboard links.
+  info:
+    - name: Runbook
+      value: https://wiki.my-org.com/runbooks/my-app
+    - name: Owner
+      value: platform-team
+
+  # Pause automated sync without deleting the policy. Useful during an
+  # incident: freeze the app, fix the cluster by hand, then unset.
+  # Set with: argocd app set my-app --sync-policy none
+  # suspended: false
+
+# =============================================================================
+# ALTERNATIVE: MULTI-SOURCE APPLICATION
+# =============================================================================
+# Replaces `source:` with `sources:` when one app needs manifests from more
+# than one repo — classically a public Helm chart plus your private values.
+# `ref` names a source so another source can read files out of it via $ref.
+#
+# spec:
+#   sources:
+#     - repoURL: https://charts.bitnami.com/bitnami
+#       chart: nginx                      # `chart:` instead of `path:` for a Helm repo
+#       targetRevision: 15.5.2
+#       helm:
+#         valueFiles:
+#           - $values/envs/dev/nginx-values.yaml   # pulled from the ref below
+#     - repoURL: git@github.com:my-org/my-repo.git
+#       targetRevision: main
+#       ref: values                        # this source is values-only, nothing is rendered from it
+# =============================================================================
+
+# =============================================================================
+# ALTERNATIVE: APPLICATIONSET (one Application per environment/cluster)
+# =============================================================================
+# Instead of copying this file per environment, generate them:
+#
+# apiVersion: argoproj.io/v1alpha1
+# kind: ApplicationSet
+# metadata:
+#   name: my-app-envs
+#   namespace: argocd
+# spec:
+#   generators:
+#     - list:
+#         elements:
+#           - env: development
+#           - env: staging
+#   template:
+#     metadata:
+#       name: 'my-app-{{env}}'
+#     spec:
+#       project: development
+#       source:
+#         repoURL: git@github.com:my-org/my-repo.git
+#         targetRevision: main
+#         path: 'k8s/overlays/{{env}}'
+#       destination:
+#         server: https://kubernetes.default.svc
+#         namespace: '{{env}}'
+#       syncPolicy:
+#         automated:
+#           prune: true
+#           selfHeal: true
+# =============================================================================

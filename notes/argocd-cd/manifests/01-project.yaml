@@ -1,0 +1,48 @@
+# Argo CD Project (AppProject)
+# ---------------------------------------------------------------------------
+# A project is a boundary. It declares WHICH repositories applications may
+# deploy FROM and WHICH cluster/namespaces they may deploy TO.
+#
+# Apply with:  kubectl apply -f 01-project.yaml
+# ---------------------------------------------------------------------------
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: development
+  # AppProject ALWAYS lives in the namespace Argo CD runs in.
+  namespace: argocd
+  finalizers:
+    # Deleting the project cascades to its applications instead of orphaning them.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Development environment applications
+
+  # Repositories applications in this project are allowed to use.
+  # These strings must match the Application spec.source.repoURL EXACTLY.
+  sourceRepos:
+    - git@github.com:my-org/my-repo.git
+    - https://github.com/my-org/my-repo.git
+    # - '*'   # lab shortcut: allow any repository
+
+  # Clusters and namespaces applications in this project may deploy to.
+  destinations:
+    - server: https://kubernetes.default.svc   # the cluster Argo CD runs on
+      namespace: development
+    # - server: https://kubernetes.default.svc
+    #   namespace: '*'
+
+  # Cluster-scoped resources this project may create.
+  # Needed if you use syncOptions CreateNamespace=true.
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  # Namespaced resources this project may create. '*' = everything.
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Optional: block dangerous resources outright.
+  # namespaceResourceBlacklist:
+  #   - group: ''
+  #     kind: ResourceQuota

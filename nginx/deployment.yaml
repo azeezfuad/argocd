@@ -1,0 +1,96 @@
+# =============================================================================
+# NGINX Deployment
+# =============================================================================
+# Deployed by Argo CD, so there is deliberately NO metadata.namespace here.
+# Argo CD applies it into spec.destination.namespace from the Application.
+# Hardcoding a namespace would override the Application and defeat reuse of
+# this same folder across dev / staging / prod overlays.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 2
+
+  # How the Deployment finds the Pods it owns. This is IMMUTABLE after
+  # creation — changing it later requires deleting the Deployment.
+  selector:
+    matchLabels:
+      app: nginx
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # one extra Pod may exist during a rollout
+      maxUnavailable: 0    # never drop below `replicas` — zero-downtime updates
+
+  template:
+    metadata:
+      labels:
+        # MUST match spec.selector.matchLabels above, and is what the
+        # Service's selector targets.
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          # Pin an explicit tag. `latest` makes rollouts unreproducible and
+          # breaks Argo CD's ability to tell you what is actually running.
+          image: nginx:1.27-alpine
+
+          # IfNotPresent avoids a registry round-trip when the tag is already
+          # cached on the node. Use Always only for mutable tags.
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http           # named port — the Service refers to it by name
+              containerPort: 80
+              protocol: TCP
+
+          # Requests = what the scheduler reserves. Limits = the hard ceiling.
+          # Without requests the Pod is BestEffort and is evicted first under
+          # memory pressure.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+          # Is the container alive? Failing this RESTARTS the container.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # Is the container ready for traffic? Failing this REMOVES the Pod
+          # from the Service endpoints without restarting it. This is what
+          # makes rolling updates safe.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            # The stock nginx image writes its pid and cache to disk, so it
+            # cannot run with a read-only root filesystem or as non-root
+            # without extra volumes. Use nginxinc/nginx-unprivileged for that.
+            readOnlyRootFilesystem: false
+
+      # Give nginx time to finish in-flight requests before SIGKILL.
+      terminationGracePeriodSeconds: 30
