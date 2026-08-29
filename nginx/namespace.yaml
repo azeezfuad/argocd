@@ -1,0 +1,17 @@
+# =============================================================================
+# Namespace
+# =============================================================================
+# The namespace the nginx Deployment and Service are applied into.
+# The name here must match spec.destination.namespace in the Application.
+#
+# A Namespace is cluster-scoped, so the AppProject must permit it:
+#     clusterResourceWhitelist:
+#       - group: ''
+#         kind: Namespace
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    name: development
