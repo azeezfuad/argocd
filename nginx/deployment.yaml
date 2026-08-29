@@ -13,7 +13,7 @@ metadata:
   labels:
     app: nginx
 spec:
-  replicas: 2
+  replicas: 5
 
   # How the Deployment finds the Pods it owns. This is IMMUTABLE after
   # creation — changing it later requires deleting the Deployment.
