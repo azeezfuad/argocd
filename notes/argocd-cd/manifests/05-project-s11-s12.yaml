@@ -1,0 +1,37 @@
+# =============================================================================
+# AppProject: s11-s12
+# =============================================================================
+# This is the project nginx.yaml references. A project acts as an allow-list:
+# an Application is rejected with InvalidSpecError unless BOTH
+#   - spec.source.repoURL          is in sourceRepos
+#   - destination server+namespace is in destinations
+# are permitted here.
+#
+# Apply with:  kubectl apply -f 05-project-s11-s12.yaml
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: s11-s12
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: s11-s12 course applications
+
+  sourceRepos:
+    - https://github.com/devopstia/s12-s11-argocd.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: development
+
+  # Required: nginx/namespace.yaml creates a Namespace, which is cluster-scoped.
+  # Without this the app fails with "Namespace ... is not permitted in project".
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

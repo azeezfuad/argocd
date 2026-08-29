@@ -82,15 +82,5 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
 
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            # The stock nginx image writes its pid and cache to disk, so it
-            # cannot run with a read-only root filesystem or as non-root
-            # without extra volumes. Use nginxinc/nginx-unprivileged for that.
-            readOnlyRootFilesystem: false
-
       # Give nginx time to finish in-flight requests before SIGKILL.
       terminationGracePeriodSeconds: 30

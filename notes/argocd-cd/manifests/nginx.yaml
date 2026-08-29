@@ -2,12 +2,12 @@
 # ---------------------------------------------------------------------------
 # repo + path + revision  ->  cluster + namespace
 #
-# Apply with:  kubectl apply -f 04-application.yaml
+# Apply with:  kubectl apply -f nginx.yaml
 # ---------------------------------------------------------------------------
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app
+  name: nginx
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -15,13 +15,17 @@ spec:
   project: s11-s12
 
   source:
-    repoURL: https://github.com/my-org/my-repo.git
+    repoURL: https://github.com/devopstia/s12-s11-argocd.git
 
-    targetRevision: main         
-    path: ./nginx       
+    targetRevision: main
+    path: nginx
 
   destination:
     server: https://kubernetes.default.svc
+    # Where the nginx workload lands. This must match:
+    #   - metadata.name in nginx/namespace.yaml
+    #   - an entry in the s11-s12 project's destinations
+    # NEVER 'argocd' — that is where Argo CD itself lives, not your workloads.
     namespace: development
 
   syncPolicy:
