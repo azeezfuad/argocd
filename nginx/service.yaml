@@ -1,44 +1,44 @@
-# =============================================================================
-# NGINX Service — type ClusterIP
-# =============================================================================
-# ClusterIP is the default Service type. It gives the Deployment a stable
-# in-cluster virtual IP and DNS name. It is NOT reachable from outside the
-# cluster — that is the point.
-#
-# Reachable in-cluster at:
-#     http://nginx                          (same namespace)
-#     http://nginx.<namespace>              (other namespace)
-#     http://nginx.<namespace>.svc.cluster.local   (fully qualified)
-#
-# To reach it from your laptop without changing the type:
-#     kubectl port-forward svc/nginx 8080:80 -n <namespace>
-#     then open http://localhost:8080
-#
-# Other types, for contrast:
-#     NodePort     - opens the same port on every node (30000-32767)
-#     LoadBalancer - provisions a cloud load balancer with an external IP
-#     ExternalName - a DNS CNAME to something outside the cluster
-# =============================================================================
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx
-  labels:
-    app: nginx
-spec:
-  type: ClusterIP
+# # =============================================================================
+# # NGINX Service — type ClusterIP
+# # =============================================================================
+# # ClusterIP is the default Service type. It gives the Deployment a stable
+# # in-cluster virtual IP and DNS name. It is NOT reachable from outside the
+# # cluster — that is the point.
+# #
+# # Reachable in-cluster at:
+# #     http://nginx                          (same namespace)
+# #     http://nginx.<namespace>              (other namespace)
+# #     http://nginx.<namespace>.svc.cluster.local   (fully qualified)
+# #
+# # To reach it from your laptop without changing the type:
+# #     kubectl port-forward svc/nginx 8080:80 -n <namespace>
+# #     then open http://localhost:8080
+# #
+# # Other types, for contrast:
+# #     NodePort     - opens the same port on every node (30000-32767)
+# #     LoadBalancer - provisions a cloud load balancer with an external IP
+# #     ExternalName - a DNS CNAME to something outside the cluster
+# # =============================================================================
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: nginx
+#   labels:
+#     app: nginx
+# spec:
+#   type: ClusterIP
 
-  # Sends traffic to every Pod carrying this label. It matches the Pod
-  # template labels in deployment.yaml — NOT the Deployment's own name.
-  # A typo here yields a Service with zero endpoints and connection refused.
-  selector:
-    app: nginx
+#   # Sends traffic to every Pod carrying this label. It matches the Pod
+#   # template labels in deployment.yaml — NOT the Deployment's own name.
+#   # A typo here yields a Service with zero endpoints and connection refused.
+#   selector:
+#     app: nginx
 
-  ports:
-    - name: http
-      port: 80           # the port the Service listens on
-      targetPort: http   # the container port, by NAME from deployment.yaml
-      protocol: TCP
+#   ports:
+#     - name: http
+#       port: 80           # the port the Service listens on
+#       targetPort: http   # the container port, by NAME from deployment.yaml
+#       protocol: TCP
 
-  # Round-robin across Pods. "ClientIP" pins a client to one Pod instead.
-  sessionAffinity: None
+#   # Round-robin across Pods. "ClientIP" pins a client to one Pod instead.
+#   sessionAffinity: None
